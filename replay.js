@@ -91,7 +91,7 @@ export class ReplayRecorder {
                     this.stream.getTracks().forEach(track => track.stop());
                 } catch(e) { console.error(e); }
                 
-                resolve(url);
+                resolve({ blob, url });
             };
 
             this.mediaRecorder.stop();

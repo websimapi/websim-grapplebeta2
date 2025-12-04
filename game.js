@@ -164,8 +164,8 @@ export class Game {
 
         // Stop any previous recording just in case
         if (this.replayRecorder && this.replayRecorder.isRecording) {
-            this.replayRecorder.stop().then(url => {
-                if (url) URL.revokeObjectURL(url);
+            this.replayRecorder.stop().then(result => {
+                if (result && result.url) URL.revokeObjectURL(result.url);
             });
         }
 
@@ -360,8 +360,9 @@ export class Game {
 
         // Stop recording and load replay
         if (this.replayRecorder) {
-            const url = await this.replayRecorder.stop();
-            if (url) {
+            const recording = await this.replayRecorder.stop();
+            if (recording) {
+                const { blob, url } = recording;
                 // Check if the game over screen is still active before playing
                 // (Prevents video from starting if user clicked retry during processing)
                 if (!this.gameOverScreen.classList.contains('hidden')) {
@@ -370,7 +371,7 @@ export class Game {
                     video.play().catch(e => console.log('Replay autoplay blocked:', e));
 
                     // Post High Score
-                    this.postHighScore(url);
+                    this.postHighScore(blob, url);
                 } else {
                     URL.revokeObjectURL(url);
                 }
@@ -378,23 +379,26 @@ export class Game {
         }
     }
 
-    async postHighScore(blobUrl) {
+    async postHighScore(blob, blobUrl) {
         try {
             // Get User Info
             let username = "Guest";
             let userid = "guest";
             
-            if (this.room && this.room.clientId && this.room.peers[this.room.clientId]) {
+            if (this.room && this.room.clientId && this.room.peers) {
                 const p = this.room.peers[this.room.clientId];
-                username = p.username;
-                userid = p.id;
+                if (p) {
+                    username = p.username || "Guest";
+                    userid = p.id || this.room.clientId;
+                } else {
+                    userid = this.room.clientId;
+                }
             }
 
             // Upload Replay to get a public URL
-            let replayUrl = blobUrl;
+            let replayUrl = null;
             if (window.websim && window.websim.upload) {
                 try {
-                    const blob = await fetch(blobUrl).then(r => r.blob());
                     const file = new File([blob], `grapple_replay_${Date.now()}.webm`, { type: 'video/webm' });
                     replayUrl = await window.websim.upload(file);
                 } catch(e) {
@@ -406,11 +410,13 @@ export class Game {
                 userid: userid,
                 username: username,
                 score: this.car.grappleCount,
-                replay: replayUrl
+                replay: replayUrl || ""
             };
 
-            window.parent.postMessage(message, '*');
-            console.log("Posted High Score:", message);
+            if (window.parent) {
+                window.parent.postMessage(message, '*');
+                console.log("High Score Posted:", message);
+            }
 
         } catch (e) {
             console.error("Error posting high score:", e);
